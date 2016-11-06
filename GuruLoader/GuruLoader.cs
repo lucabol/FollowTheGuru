@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Xml.Linq;
@@ -39,7 +40,29 @@ public class GuruData {
     public string Name { get; }
     public IEnumerable<Position> Positions { get; }
 }
+
+public class RssData {
+    public string DisplayName { get; set; }
+    public IEnumerable<string> Links { get; set; }
+}
+
 public static class GuruLoader {
+
+    public static RssData ParseRssText(Stream rssStream) {
+        var xml = XDocument.Load(rssStream);
+        XNamespace xs = "http://www.w3.org/2005/Atom";
+        var name = xml
+                   .Descendants(xs + "company-info")
+                   .First()
+                   .Element(xs + "conformed-name").Value;
+
+        var links = from feed in xml.Descendants(xs + "entry")
+                    where feed.Element(xs + "content").Element(xs + "filing-type").Value == "13F-HR"
+                    select feed.Element(xs + "link").Attribute("href").Value;
+
+        return new RssData { DisplayName = name, Links = links };
+    }
+
     static async Task<Tuple<string, IEnumerable<Tuple<string, string>>>> Load13FLinksAsync(string cik) {
 
         var cikLink = $"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik}&CIK=0001568820&type=&dateb=&owner=exclude&start=0&count=40&output=atom";
