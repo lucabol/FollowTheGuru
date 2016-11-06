@@ -99,7 +99,8 @@ public static class GuruLoader {
             posLists.Add(PositionsFromText(dl.Item1, txt));
         });
 
-        await Task.WhenAll(tasks);
+        var waitableTasks = tasks.ToArray();
+        await Task.WhenAll(waitableTasks);
 
         return posLists.SelectMany(l => l);
     }
