@@ -3,43 +3,27 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 
 public class Position {
 
-    private Position(DateTime date, string name, string classTitle, string cusip, int value, int shares, string sharesType) {
-        Date = date;
-        Name = name;
-        ClassTitle = classTitle;
-        Cusip = cusip;
-        Value = value;
-        Shares = shares;
-        SharesType = sharesType;
-    }
-    public static Position Create(DateTime date, string name, string classTitle, string cusip, int value, int shares, string sharesType) {
-        return new Position(date, name, classTitle, cusip, value, shares, sharesType);
-    }
-
-    public DateTime Date { get; }
-    public string Name { get; }
-    public string ClassTitle { get; }
-    public string Cusip { get; }
-    public int Value { get; }
-    public int Shares { get; }
-    public string SharesType { get; }
+    public string Name { get; set; }
+    public string ClassTitle { get; set; }
+    public string Cusip { get; set; }
+    public int Value { get; set; }
+    public int Shares { get; set; }
+    public string SharesType { get; set; }
 
 }
 
-public class GuruData {
-    public GuruData(string cik, string name, IEnumerable<Position> pos) {
-        Name = name;
-        Positions = pos;
-        Cik = cik;
-    }
-    public string Cik { get; }
-    public string Name { get; }
-    public IEnumerable<Position> Positions { get; }
+public class Portfolio {
+
+    public int TotalValue { get; set; }
+    public int PositionsNumber { get; set; }
+    public DateTime EndQuarterDate { get; set; }
+    public IEnumerable<Position> Positions { get; set; }
 }
 
 public class RssData {
@@ -78,76 +62,49 @@ public static class GuruLoader {
                       .GetAttributeValue("href", "NO LINK FOUND");
     }
 
-    static async Task<Tuple<string, IEnumerable<Tuple<string, string>>>> Load13FLinksAsync(string cik) {
+    // Given CIK, gets the link for the RSS file
+    public static string ComposeGuruUrl(string cik) => $"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik}&CIK=0001568820&type=&dateb=&owner=exclude&start=0&count=40&output=atom";
 
-        var cikLink = $"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik}&CIK=0001568820&type=&dateb=&owner=exclude&start=0&count=40&output=atom";
+    public static Portfolio ParseSubmissionFile(Stream submissionFile) {
+        using (var reader = new StreamReader(submissionFile, Encoding.UTF8)) {
+            var fullTxt = reader.ReadToEnd();
+            var startFirstDoc = fullTxt.IndexOf("<?xml");
+            var endFirstDoc = fullTxt.IndexOf("</XML>");
+            var firstDoc = fullTxt.Substring(startFirstDoc, endFirstDoc - startFirstDoc);
+            var firstXml = XDocument.Parse(firstDoc);
+            XNamespace xs = "http://www.sec.gov/edgar/thirteenffiler";
+            var endQuarterDate = DateTime.Parse(firstXml.Descendants(xs + "reportCalendarOrQuarter").Single().Value);
+            var totalValue = int.Parse(firstXml.Descendants(xs + "tableValueTotal").Single().Value);
+            var positionsNumber = int.Parse(firstXml.Descendants(xs + "tableEntryTotal").Single().Value);
 
-        var txt = await Utils.HttpLoadAsync(cikLink);
+            var startSecondDoc = fullTxt.IndexOf("<informationTable");
+            var endSecondDoc = fullTxt.IndexOf("</informationTable>") + "</informationTable>".Length;
+            var secondDoc = fullTxt.Substring(startSecondDoc, endSecondDoc - startSecondDoc);
+            XNamespace ns = "http://www.sec.gov/edgar/document/thirteenf/informationtable";
+            var secondXml = XDocument.Parse(secondDoc);
+            var positions = PositionsFromXml(secondXml);
 
-        var xml = XDocument.Parse(txt);
-        XNamespace xs = "http://www.w3.org/2005/Atom";
-
-        var name = xml
-                   .Descendants(xs + "company-info")
-                   .First()
-                   .Element(xs + "conformed-name").Value;
-
-        var data = from feed in xml.Descendants(xs + "entry")
-                   where feed.Element(xs + "content").Element(xs + "filing-type").Value == "13F-HR"
-                   select new {
-                       date = feed.Element(xs + "content").Element(xs + "filing-date").Value,
-                       link = feed.Element(xs + "link").Attribute("href").Value
-                   };
-
-        var t1 = await Utils.HttpLoadAsync(data.First().link);
-        var test = XElement.Parse(t1);
-
-        var dateLinks = data
-                        .Select(d => Tuple.Create(d.date, new Uri(d.link).Segments))
-                        .Select(t => Tuple.Create(t.Item1, t.Item2.Take(t.Item2.Count() - 1))) // traverse each array twice, but fine
-                        .Select(t => Tuple.Create(t.Item1, String.Join("", t.Item2)))
-                        .Select(t => Tuple.Create(t.Item1, $"http://www.sec.gov{t.Item2}infotable.xml"));
-
-
-
-        return Tuple.Create(name, dateLinks);
+            return new Portfolio {
+                EndQuarterDate = endQuarterDate,
+                TotalValue = totalValue,
+                PositionsNumber = positionsNumber,
+                Positions = positions
+            };
+        }
     }
 
-    static IEnumerable<Position> PositionsFromText(string date, string txt) {
+    static IEnumerable<Position> PositionsFromXml(XDocument xml) {
 
         XNamespace xs = "http://www.sec.gov/edgar/document/thirteenf/informationtable";
-        var xml = XDocument.Parse(txt);
-        var d = DateTime.Parse(date);
 
         return from it in xml.Descendants(xs + "infoTable")
-               select Position.Create(d,
-                                      it.Element(xs + "nameOfIssuer").Value,
-                                      it.Element(xs + "titleOfClass").Value,
-                                      it.Element(xs + "cusip").Value,
-                                      int.Parse(it.Element(xs + "value").Value),
-                                      int.Parse(it.Element(xs + "shrsOrPrnAmt").Element(xs + "sshPrnamt").Value),
-                                      it.Element(xs + "shrsOrPrnAmt").Element(xs + "sshPrnamtType").Value);
+               select new Position {  Name = it.Element(xs + "nameOfIssuer").Value,
+                                      ClassTitle = it.Element(xs + "titleOfClass").Value,
+                                      Cusip = it.Element(xs + "cusip").Value,
+                                      Value = int.Parse(it.Element(xs + "value").Value),
+                                      Shares = int.Parse(it.Element(xs + "shrsOrPrnAmt").Element(xs + "sshPrnamt").Value),
+                                      SharesType = it.Element(xs + "shrsOrPrnAmt").Element(xs + "sshPrnamtType").Value};
 
     }
-    static async Task<IEnumerable<Position>> LoadPositionsFromLinks(IEnumerable<Tuple<string, string>> dateLinks) {
-        var posLists = new List<IEnumerable<Position>>();
-
-        var tasks = dateLinks.Select(async dl => {
-            var txt = await Utils.HttpLoadAsync(dl.Item2);
-            posLists.Add(PositionsFromText(dl.Item1, txt));
-        });
-
-        var waitableTasks = tasks.ToArray();
-        await Task.WhenAll(waitableTasks);
-
-        return posLists.SelectMany(l => l);
-    }
-
-    public async static Task<GuruData> LoadPositions(string cik) {
-        var invLinks = await Load13FLinksAsync(cik);
-        var positions = await LoadPositionsFromLinks(invLinks.Item2);
-        return new GuruData(invLinks.Item1, "", positions);
-    }
-
 }
 

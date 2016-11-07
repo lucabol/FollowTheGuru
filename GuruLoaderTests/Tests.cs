@@ -14,6 +14,7 @@ public class Tests {
 
     public static IEnumerable<object[]>  GetRssFiles() => GetFileWithExtension("*.rss");
     public static IEnumerable<object[]> GetHtmFiles() => GetFileWithExtension("*.htm");
+    public static IEnumerable<object[]> GetTxtFiles() => GetFileWithExtension("*.txt");
 
     [Theory, MemberData(nameof(GetHtmFiles))]
     public void ParseHtmFileTests(string fileFullName) {
@@ -33,6 +34,22 @@ public class Tests {
 
         Assert.All(res.Links, link => Assert.True(Path.GetExtension(link) == ".htm" ||
                                                   Path.GetExtension(link) == ".html")) ;
+    }
+
+    [Theory, MemberData(nameof(GetTxtFiles))]
+    public void ParseSubmissionFileTests(string fileFullName) {
+        var txtStream = File.OpenRead(fileFullName);
+        var port = GuruLoader.ParseSubmissionFile(txtStream);
+        Assert.NotNull(port);
+        Assert.True(port.PositionsNumber > 0);
+        Assert.True(port.TotalValue > 0);
+        Assert.NotEmpty(port.Positions);
+        Assert.All(port.Positions, pos => {
+            Assert.False(String.IsNullOrEmpty(pos.Cusip));
+            Assert.False(String.IsNullOrEmpty(pos.Name));
+            Assert.True(pos.Shares > 0);
+            Assert.True(pos.Value > 0);
+        });
     }
 }
 
