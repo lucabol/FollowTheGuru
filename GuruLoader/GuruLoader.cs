@@ -1,4 +1,5 @@
-﻿using System;
+﻿using HtmlAgilityPack;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -47,7 +48,8 @@ public class RssData {
 }
 
 public static class GuruLoader {
-
+    // Parse the rss stream into the displayable name of the guru and the links
+    // to the html file pointing to data on the portfolio
     public static RssData ParseRssText(Stream rssStream) {
         var xml = XDocument.Load(rssStream);
         XNamespace xs = "http://www.w3.org/2005/Atom";
@@ -61,6 +63,19 @@ public static class GuruLoader {
                     select feed.Element(xs + "link").Attribute("href").Value;
 
         return new RssData { DisplayName = name, Links = links };
+    }
+
+    // Parse the html file pointed to by the rss stream to extract the name of the text file
+    // containing date of filing, date of portfolio and positions
+    public static string ParseHtmFile(Stream htmlStream) {
+        var html = new HtmlDocument();
+        html.Load(htmlStream);
+        return    html.DocumentNode.Descendants("tr")
+                      .Where(tr => tr.Descendants("td").Any(td => td.InnerText == "Complete submission text file"))
+                      .Single()
+                      .Descendants("a")
+                      .Single()
+                      .GetAttributeValue("href", "NO LINK FOUND");
     }
 
     static async Task<Tuple<string, IEnumerable<Tuple<string, string>>>> Load13FLinksAsync(string cik) {
