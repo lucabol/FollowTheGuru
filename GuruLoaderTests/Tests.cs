@@ -51,5 +51,27 @@ public class Tests {
             Assert.True(pos.Value > 0);
         });
     }
+
+    static bool isSimilar(double expected, double actual) {
+        var eps = 0.001;
+        return actual < expected + eps && actual > expected - eps;
+    }
+
+    [Theory,
+        InlineData(@"TestData\Arlington1.txt", @"TestData\Arlington2.txt", "N20146101", -0.1697, "949746101",null),
+        InlineData(@"TestData\BraveWarrior1.txt", @"TestData\BraveWarrior2.txt", "03674x106", 1.2081, "g5480u138", "91911k102")]
+    public void CreateDisplayPortfolioTests(string newPort, string oldPort, string cusipChanged, double change, string cusipNew, string cusipSold) {
+        var txtStream1 = File.OpenRead(newPort);
+        var port1 = GuruLoader.ParseSubmissionFile(txtStream1);
+
+        var txtStream2 = File.OpenRead(oldPort);
+        var port2 = GuruLoader.ParseSubmissionFile(txtStream2);
+
+        var dp = GuruLoader.CreateDisplayPortfolio("name", port1, port2);
+
+        if(cusipChanged != null) Assert.True(isSimilar(change, dp.Positions.First(p => p.Cusip == cusipChanged).Change));
+        if(cusipNew != null) Assert.True(dp.Positions.First(p => p.Cusip == cusipNew).IsNew);
+        if(cusipSold != null) Assert.True(dp.Positions.First(p => p.Cusip == cusipSold).IsSold);
+    }
 }
 
