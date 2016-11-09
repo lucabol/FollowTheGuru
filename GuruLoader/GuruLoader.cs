@@ -3,10 +3,25 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 
+
+/*
+ * This file contains utility functions to parse SEC filings to get out a portfolio at a particular date for a particular investor.
+ *  Investors are identified by a CIK
+ *  Given a CIK, you can get to an RSS feed that contains all filing for that investor
+ *  Given the RSS feed, you can scan it to get links for all the 13F filings that represent the portfolio at a particular date.
+ *  Given a link to a 13F filing, you need to scan the resulting HTML file for a link to the full submission file
+ *  Given the full submission file, you need to scan it to extract the entries for each position in the portfolio
+ *  Given the last two portfolios, you can then diff them to find the changes and return a summary of the portfolio and changes
+ * The code below implements the above workflow as granular functions so that can be reused in different architecture (i.e. one actor for each portfolio
+ *   coarse grain web service, other)
+ */
+
+// A position as represented in the SEC filing (not good for direct display)
 public class Position {
 
     public string Name { get; set; }
@@ -20,6 +35,7 @@ public class Position {
 
 }
 
+// A portfolio as represented in the SEC filing
 public class Portfolio {
 
     public int TotalValue { get; set; }
@@ -28,11 +44,14 @@ public class Portfolio {
     public IEnumerable<Position> Positions { get; set; }
 }
 
+// Representation of the RSS file containing links to all 13F filings
 public class RssData {
     public string DisplayName { get; set; }
     public IEnumerable<string> Links { get; set; }
 }
 
+// A position in a display friendly form (i.e. directly displayable)
+// It adds to what is in the SEC filings data about changes in positions and percentage of portfolio
 public class DisplayPosition {
     public string Name { get; set; }
     public string ClassTitle { get; set; }
@@ -46,6 +65,7 @@ public class DisplayPosition {
     public bool IsSold { get; set; }
 }
 
+// A displayable portfolio
 public class DisplayPortfolio {
 
     public string DisplayName { get; set; }
@@ -87,8 +107,13 @@ public static class GuruLoader {
     }
 
     // Given CIK, gets the link for the RSS file
-    public static string ComposeGuruUrl(string cik) => $"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik}&CIK=0001568820&type=&dateb=&owner=exclude&start=0&count=40&output=atom";
+    public static string ComposeGuruUrl(string cik)
+        => $"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik}&CIK=0001568820&type=&dateb=&owner=exclude&start=0&count=40&output=atom";
+    // Links in the submission file happen to be relative, this absolutes them. Brittle, but if the below change, the world might come to end
+    // as everybody and his brother has links to it
+    public static string MakeSecLinkAbsolute(string relUrl) => $"https://www.sec.gov{relUrl}";
 
+    // The submission file is divided in two parts, the first contains investor related data, the second the portfolio for that date
     static Tuple<XDocument, XDocument> SplitSubmissionFile(Stream submissionFile) {
         using (var reader = new StreamReader(submissionFile, Encoding.UTF8)) {
             var fullTxt = reader.ReadToEnd();
@@ -105,6 +130,7 @@ public static class GuruLoader {
         }
     }
 
+    // gets a portfolio out of a submission file
     public static Portfolio ParseSubmissionFile(Stream submissionFile) {
         var xmls = SplitSubmissionFile(submissionFile);
         var firstXml = xmls.Item1;
@@ -128,6 +154,7 @@ public static class GuruLoader {
 
     }
 
+    // Gets all positions stored in the xml portfolio part of the xml file
     static IEnumerable<Position> PositionsFromXml(XDocument xml) {
 
         XNamespace xs = "http://www.sec.gov/edgar/document/thirteenf/informationtable";
@@ -144,6 +171,7 @@ public static class GuruLoader {
                };
     }
 
+    // Enriches the position type for easy display
     static DisplayPosition DisplayFromPosition(Position p) {
         return new DisplayPosition() {
             Name = p.Name,
@@ -155,10 +183,12 @@ public static class GuruLoader {
         };
     }
 
+    // Uniquely identify the position
     static string FormKey(Position p) {
         return p.Cusip + p.ClassTitle + p.PutCall;
     }
 
+    // Diffs two portfolios and figure out what changed, this could perhaps be written more functionally
     public static DisplayPortfolio CreateDisplayPortfolio(string displayName, Portfolio newPort, Portfolio oldPort) {
         var positions = new List<DisplayPosition>();
         var oldPostions = new Dictionary<string, Position>();
@@ -182,6 +212,7 @@ public static class GuruLoader {
             dp.IsSold = false;
             positions.Add(dp);
         }
+
         // Process sold positions
         foreach (var sold in oldPostions.Values) {
             var dp = DisplayFromPosition(sold);
@@ -194,13 +225,49 @@ public static class GuruLoader {
             positions.Add(dp);
         }
 
+        // Eye candy
+        var sortedPos = positions.OrderByDescending(pos => pos.Value);
+
         return new DisplayPortfolio() {
             DisplayName = displayName,
             EndQuarterDate = newPort.EndQuarterDate,
             TotalValue = newPort.TotalValue,
             PositionsNumber = newPort.PositionsNumber,
-            Positions = positions
+            Positions = sortedPos
         };
+    }
+
+    // Utility function to help waiting for all portfolios to be loaded
+    async static Task<Portfolio> FetchPortfolio(HttpClient client, string htmlLink) {
+        using (var html = await client.GetStreamAsync(htmlLink)) {
+            var submissionLink = ParseHtmFile(html);
+            using (var submissionStream = await client.GetStreamAsync(MakeSecLinkAbsolute(submissionLink))) {
+                return ParseSubmissionFile(submissionStream);
+            }
+        }
+    }
+    public async static Task<DisplayPortfolio> FetchDisplayPortfolio(string cik) {
+        if (String.IsNullOrEmpty(cik)) throw new Exception("Cik cannot be empty");
+
+        var rssUrl = ComposeGuruUrl(cik);
+        using (var client = new HttpClient()) {
+            // Getting the rss stream cannot be started in parallel as it needs to be read before loading the portfolios
+            var rss = await client.GetStreamAsync(rssUrl);
+            var rssData = ParseRssText(rss);
+
+            var portsNumber = rssData.Links.Count();
+            if (portsNumber == 0) throw new Exception("No portfolios for this cik");
+
+            var port1 = FetchPortfolio(client, rssData.Links.First());
+
+            // If there is just one portfolio (i.e. investor just started investing) create an empty old one so that the logic
+            // populates a displayPortfolio where all the positions are marked as new
+            var port2 = portsNumber == 1 ? Task.FromResult(new Portfolio() { Positions = new Position[] { } }) : FetchPortfolio(client, rssData.Links.ElementAt(1));
+
+            var portfolios = await Task.WhenAll(new Task<Portfolio>[] { port1, port2 });
+
+            return CreateDisplayPortfolio(rssData.DisplayName, portfolios[0], portfolios[1]);
+        }
     }
 }
 

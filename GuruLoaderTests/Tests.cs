@@ -4,10 +4,14 @@ using System.IO;
 using Xunit;
 using System.Linq;
 
+/*
+ * Tests should be improved. They just test general properties of files, instead of lower granularity facts
+ * (i.e. did I get this *exact* number).
+ */
 
 public class Tests {
 
-
+    // Generators to create test data from the files on disk
     public static IEnumerable<object[]> GetFileWithExtension(string ext)
         => Directory.GetFiles(@"TestData\", ext)
                     .Select(path => new object [] { path});
@@ -57,6 +61,8 @@ public class Tests {
         return actual < expected + eps && actual > expected - eps;
     }
 
+    // This could be made more generic by reading from a cvs file with more info to check.
+    // As it is it checks that one particular position (cusip) has changed has expected, one is new and another is sold
     [Theory,
         InlineData(@"TestData\Arlington1.txt", @"TestData\Arlington2.txt", "N20146101", -0.1697, "949746101",null),
         InlineData(@"TestData\BraveWarrior1.txt", @"TestData\BraveWarrior2.txt", "03674x106", 1.2081, "g5480u138", "91911k102")]
