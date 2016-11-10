@@ -32,6 +32,7 @@ public class Position {
     public string SharesType { get; set; }
 
     public string PutCall { get; set; }
+    public double Price { get; set; }
 
 }
 
@@ -63,6 +64,7 @@ public class DisplayPosition {
     public double PercOfPortfolio { get; set; }
     public bool IsNew { get; set; }
     public bool IsSold { get; set; }
+    public double Price { get; set; }
 }
 
 // A displayable portfolio
@@ -75,6 +77,30 @@ public class DisplayPortfolio {
     public IEnumerable<DisplayPosition> Positions { get; set; }
 }
 
+public class DisplayChangePosition {
+    public int Value { get; set; }
+    public int Shares { get; set; }
+    public double Change { get; set; }
+    public double PercOfPortfolio { get; set; }
+    public bool IsNew { get; set; }
+    public bool IsSold { get; set; }
+    public double Price { get; set; }
+
+}
+
+public class DisplayCompany {
+    public string Name { get; set; }
+    public string ClassTitle { get; set; }
+    public string Cusip { get; set; }
+    public string PutCall { get; set; }
+    public List<DisplayChangePosition> ChangePositions { get; set; }
+
+}
+
+public class FullPortfolioData {
+    public DisplayPortfolio Portfolio { get; set; }
+    public IEnumerable<DisplayCompany> CompaniesHistory { get; set; }
+}
 public static class GuruLoader {
     // Parse the rss stream into the displayable name of the guru and the links
     // to the html file pointing to data on the portfolio
@@ -167,7 +193,8 @@ public static class GuruLoader {
                    Value = int.Parse(it.Element(xs + "value").Value),
                    Shares = int.Parse(it.Element(xs + "shrsOrPrnAmt").Element(xs + "sshPrnamt").Value),
                    SharesType = it.Element(xs + "shrsOrPrnAmt").Element(xs + "sshPrnamtType").Value,
-                   PutCall = it.Element(xs + "putCall")?.Value
+                   PutCall = it.Element(xs + "putCall")?.Value,
+                   Price = double.Parse(it.Element(xs + "value").Value) * 1000.0 / double.Parse(it.Element(xs + "shrsOrPrnAmt").Element(xs + "sshPrnamt").Value)
                };
     }
 
@@ -179,14 +206,15 @@ public static class GuruLoader {
             Shares = p.Shares,
             Cusip = p.Cusip,
             Value = p.Value,
-            PutCall = p.PutCall
+            PutCall = p.PutCall,
+            Price = p.Price
         };
     }
 
     // Uniquely identify the position
-    static string FormKey(Position p) {
-        return p.Cusip + p.ClassTitle + p.PutCall;
-    }
+    static string FormKey(Position p) => p.Cusip + p.ClassTitle + p.PutCall;
+    static string FormKeyD(DisplayPosition p) => p.Cusip + p.ClassTitle + p.PutCall;
+
 
     // Diffs two portfolios and figure out what changed, this could perhaps be written more functionally
     public static DisplayPortfolio CreateDisplayPortfolio(string displayName, Portfolio newPort, Portfolio oldPort) {
@@ -237,13 +265,48 @@ public static class GuruLoader {
         };
     }
 
+    // Takes a list of portfolios and returns the history of all the positions of the *most recent* portfolio
+    public static IEnumerable<DisplayCompany> CreateDisplayCompanies(IEnumerable<DisplayPortfolio> ports) {
+        // Could assume already sorted, but there aren't going to be a lot of them, so it's ok to sort
+        var sortedPort = ports.OrderByDescending(p => p.EndQuarterDate);
+
+        var recentCompanies = new Dictionary<string, DisplayCompany>();
+        foreach (var p in ports.First().Positions)
+            recentCompanies.Add(FormKeyD(p), new DisplayCompany {
+                Name = p.Name, Cusip = p.Cusip, ClassTitle = p.ClassTitle, PutCall = p.PutCall, ChangePositions = new List<DisplayChangePosition>()
+            });
+
+        foreach (var port in ports) {
+            foreach (var pos in port.Positions) {
+                DisplayCompany dp;
+                if (recentCompanies.TryGetValue(FormKeyD(pos), out dp))
+                    dp.ChangePositions.Add(new DisplayChangePosition {
+                        Change = pos.Change, IsNew = pos.IsNew, IsSold = pos.IsSold, Shares = pos.Shares,
+                        Value = pos.Value, Price = pos.Price, PercOfPortfolio = pos.PercOfPortfolio
+                    });
+            }
+        }
+        return recentCompanies.Values;
+    }
+
     // Utility function to help waiting for all portfolios to be loaded
     async static Task<Portfolio> FetchPortfolio(HttpClient client, string htmlLink) {
-        using (var html = await client.GetStreamAsync(htmlLink)) {
-            var submissionLink = ParseHtmFile(html);
-            using (var submissionStream = await client.GetStreamAsync(MakeSecLinkAbsolute(submissionLink))) {
-                return ParseSubmissionFile(submissionStream);
+        try {
+            using (var html = await client.GetStreamAsync(htmlLink)) {
+                var submissionLink = ParseHtmFile(html);
+                using (var submissionStream = await client.GetStreamAsync(MakeSecLinkAbsolute(submissionLink))) {
+                    return ParseSubmissionFile(submissionStream);
+                }
             }
+        } catch(Exception e) {
+            // Before a certain date (2013) the format for 13F was different, not XML, hence the code will throw
+            // a different exception depending on the particular format of the text file read.
+            // It is unclear if it's of any interest to look so far back in the past.
+            // Until I implement support for such old files, I construct an empty portfolio in such cases
+            // TODO: fix the code so that doesn't swallow exceptions
+            return new Portfolio {
+                EndQuarterDate = new DateTime(), Positions = new List<Position>(), PositionsNumber = 0, TotalValue = 0
+            };
         }
     }
     public async static Task<DisplayPortfolio> FetchDisplayPortfolio(string cik) {
@@ -269,5 +332,32 @@ public static class GuruLoader {
             return CreateDisplayPortfolio(rssData.DisplayName, portfolios[0], portfolios[1]);
         }
     }
+
+    public async static Task<FullPortfolioData> FetchFullPortfolioData(string cik) {
+        if (String.IsNullOrEmpty(cik)) throw new Exception("Cik cannot be empty");
+
+        var rssUrl = ComposeGuruUrl(cik);
+        using (var client = new HttpClient()) {
+            // Getting the rss stream cannot be started in parallel as it needs to be read before loading the portfolios
+            var rss = await client.GetStreamAsync(rssUrl);
+            var rssData = ParseRssText(rss);
+
+            var portsNumber = rssData.Links.Count();
+            if (portsNumber == 0) throw new Exception("No portfolios for this cik");
+
+            var ports = rssData.Links.Select(l => FetchPortfolio(client, l));
+            var portfolios = await Task.WhenAll(ports);
+
+            var pairs = portfolios.Zip(portfolios.Skip(1), (a, b) => Tuple.Create(a, b));
+
+            var dps = pairs.Select(t => CreateDisplayPortfolio(rssData.DisplayName, t.Item1, t.Item2));
+            return new FullPortfolioData {
+                Portfolio = dps.First(),
+                CompaniesHistory = CreateDisplayCompanies(dps)
+            };
+        }
+    }
+
 }
+
 
