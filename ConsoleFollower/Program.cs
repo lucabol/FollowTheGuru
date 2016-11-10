@@ -28,7 +28,7 @@ public class Program {
         foreach (var c in companies) {
             sb.AppendLine(String.Join(" ", cs(c.Name.Trim(), 40), cs(c.PutCall, 5)));
             foreach (var p in c.ChangePositions) {
-                sb.AppendLine(String.Join(" ", "\t", def(p.IsNew, "NEW "), def(p.IsSold, "SOLD"), cs(p.Shares.ToString(), 10),
+                sb.AppendLine(String.Join(" ", "\t", p.Date.ToString("d"), def(p.IsNew, "NEW "), def(p.IsSold, "SOLD"), cs(p.Shares.ToString(), 10),
                             cs(p.Value.ToString(), 10), cs(Math.Round(p.PercOfPortfolio * 100, 2).ToString(), 6),
                             cs(Math.Round(p.Change * 100, 2).ToString(), 6), cs(Math.Round(p.Price, 2).ToString(), 6)));
             }

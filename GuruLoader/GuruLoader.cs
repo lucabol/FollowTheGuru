@@ -85,6 +85,7 @@ public class DisplayChangePosition {
     public bool IsNew { get; set; }
     public bool IsSold { get; set; }
     public double Price { get; set; }
+    public DateTime Date { get; set; }
 
 }
 
@@ -282,7 +283,8 @@ public static class GuruLoader {
                 if (recentCompanies.TryGetValue(FormKeyD(pos), out dp))
                     dp.ChangePositions.Add(new DisplayChangePosition {
                         Change = pos.Change, IsNew = pos.IsNew, IsSold = pos.IsSold, Shares = pos.Shares,
-                        Value = pos.Value, Price = pos.Price, PercOfPortfolio = pos.PercOfPortfolio
+                        Value = pos.Value, Price = pos.Price, PercOfPortfolio = pos.PercOfPortfolio,
+                        Date = port.EndQuarterDate
                     });
             }
         }
