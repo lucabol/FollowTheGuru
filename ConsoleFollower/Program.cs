@@ -14,11 +14,11 @@ public class Program {
         var sb = new StringBuilder();
         sb.AppendLine(String.Join(" -- ", dp.DisplayName,dp.EndQuarterDate.ToString("d"), dp.TotalValue, dp.PositionsNumber));
         sb.AppendLine(String.Join(" ", "NEW ", "SOLD", cs("NAME", 40), cs("P/C", 5), cs("SHARES", 10),
-                                    cs("VALUE", 10), "%PORT ", "CHANGE", "PRICE "));
+                                    cs("VALUE", 10), "%PORT ", "CHANGE", "PRICE ", "DISCR"));
         foreach (var p in dp.Positions) {
             sb.AppendLine(String.Join(" ", def(p.IsNew, "NEW "), def(p.IsSold,"SOLD"), cs(p.Name.Trim(),40), cs(p.PutCall,5) , cs(p.Shares.ToString(),10),
                                     cs(p.Value.ToString(),10), cs(Math.Round(p.PercOfPortfolio * 100,2).ToString(), 6),
-                                    cs(Math.Round(p.Change * 100,2).ToString(),6), cs(Math.Round(p.Price,2).ToString(),6)));
+                                    cs(Math.Round(p.Change * 100,2).ToString(),6), cs(Math.Round(p.Price,2).ToString(),6), cs(p.Discretion.ToString(), 10)));
         }
         return sb.ToString();
     }
@@ -42,17 +42,16 @@ public class Program {
     {
         var banner = "Usage: Follower Cik [-All]";
         if (args.Count() > 2) throw new Exception(banner);
-        if (args.Count() == 2 && args[1] != "-All") throw new Exception(banner);
+        if (args.Count() == 2 && args[1] != "-All") throw new ArgumentException(banner);
 
         if(args.Count() == 1) {
-            var result = GuruLoader.FetchDisplayPortfolio(args[0]).Result;
+            var result = GuruLoader.FetchDisplayPortfolioAsync(args[0]).Result;
             Console.WriteLine(DisplayPortToString(result));
         } else {
             // Printing Portfolio summary at both start and bottom
-            var result = GuruLoader.FetchFullPortfolioData(args[0]).Result;
+            var result = GuruLoader.FetchFullPortfolioDataAsync(args[0]).Result;
             Console.WriteLine(DisplayPortToString(result.Portfolio));
             Console.WriteLine(DisplayHistory(result.CompaniesHistory));
-            Console.WriteLine(DisplayPortToString(result.Portfolio));
         }
 
     }

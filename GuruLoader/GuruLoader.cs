@@ -1,6 +1,7 @@
 ﻿using HtmlAgilityPack;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -33,6 +34,7 @@ public class Position {
 
     public string PutCall { get; set; }
     public double Price { get; set; }
+    public string Discretion { get; set; }
 
 }
 
@@ -65,6 +67,7 @@ public class DisplayPosition {
     public bool IsNew { get; set; }
     public bool IsSold { get; set; }
     public double Price { get; set; }
+    public string Discretion { get; set; }
 }
 
 // A displayable portfolio
@@ -190,6 +193,7 @@ public static class GuruLoader {
                select new Position {
                    Name = it.Element(xs + "nameOfIssuer").Value,
                    ClassTitle = it.Element(xs + "titleOfClass").Value,
+                   Discretion = it.Element(xs + "investmentDiscretion").Value,
                    Cusip = it.Element(xs + "cusip").Value,
                    Value = int.Parse(it.Element(xs + "value").Value),
                    Shares = int.Parse(it.Element(xs + "shrsOrPrnAmt").Element(xs + "sshPrnamt").Value),
@@ -208,21 +212,20 @@ public static class GuruLoader {
             Cusip = p.Cusip,
             Value = p.Value,
             PutCall = p.PutCall,
-            Price = p.Price
+            Price = p.Price,
+            Discretion = p.Discretion
         };
     }
 
     // Uniquely identify the position
-    static string FormKey(Position p) => p.Cusip + p.ClassTitle + p.PutCall;
-    static string FormKeyD(DisplayPosition p) => p.Cusip + p.ClassTitle + p.PutCall;
-
+    // btw: shoulld Discretion really be part of the key? Are they separate positions in the rare case they have separate discretion?
+    static string FormKey(Position p) => p.Cusip + p.ClassTitle + p.PutCall + p.Discretion;
+    static string FormKeyD(DisplayPosition p) => p.Cusip + p.ClassTitle + p.PutCall + p.Discretion;
 
     // Diffs two portfolios and figure out what changed, this could perhaps be written more functionally
     public static DisplayPortfolio CreateDisplayPortfolio(string displayName, Portfolio newPort, Portfolio oldPort) {
         var positions = new List<DisplayPosition>();
-        var oldPostions = new Dictionary<string, Position>();
-
-        foreach (var po in oldPort.Positions) oldPostions.Add(FormKey(po), po);
+        var oldPositions = oldPort.Positions.ToDictionary(FormKey);
 
         // Process existing positions
         foreach (var pn in newPort.Positions) {
@@ -230,10 +233,10 @@ public static class GuruLoader {
             dp.PercOfPortfolio = (double)dp.Value / (double)newPort.TotalValue;
 
             Position oldPos;
-            if (oldPostions.TryGetValue(FormKey(pn), out oldPos)) {
+            if (oldPositions.TryGetValue(FormKey(pn), out oldPos)) {
                 dp.Change = (double)dp.Shares / (double)oldPos.Shares - 1;
                 dp.IsNew = false;
-                oldPostions.Remove(FormKey(pn)); // remove all positions that are still there so it leaves just the ones that have been sold
+                oldPositions.Remove(FormKey(pn)); // remove all positions that are still there so it leaves just the ones that have been sold
             } else {
                 dp.Change = 0; // new position, not there in the old portfolio
                 dp.IsNew = true;
@@ -243,7 +246,7 @@ public static class GuruLoader {
         }
 
         // Process sold positions
-        foreach (var sold in oldPostions.Values) {
+        foreach (var sold in oldPositions.Values) {
             var dp = DisplayFromPosition(sold);
             dp.Shares = 0;
             dp.Value = 0;
@@ -301,6 +304,7 @@ public static class GuruLoader {
                 }
             }
         } catch(Exception e) {
+            if(e.GetType() != typeof(ArgumentOutOfRangeException)) Console.WriteLine(e);
             // Before a certain date (2013) the format for 13F was different, not XML, hence the code will throw
             // a different exception depending on the particular format of the text file read.
             // It is unclear if it's of any interest to look so far back in the past.
@@ -311,23 +315,29 @@ public static class GuruLoader {
             };
         }
     }
-    public async static Task<DisplayPortfolio> FetchDisplayPortfolio(string cik) {
+
+    static async Task<RssData>  FetchRssDataAsync(HttpClient client, string cik) {
         if (String.IsNullOrEmpty(cik)) throw new Exception("Cik cannot be empty");
 
         var rssUrl = ComposeGuruUrl(cik);
+        // Getting the rss stream cannot be started in parallel as it needs to be read before loading the portfolios
+        var rss = await client.GetStreamAsync(rssUrl);
+        var rssData = ParseRssText(rss);
+
+        var portsNumber = rssData.Links.Count();
+        if (portsNumber == 0) throw new Exception("No portfolios for this cik");
+        return rssData;
+
+        }
+    public async static Task<DisplayPortfolio> FetchDisplayPortfolioAsync(string cik) {
         using (var client = new HttpClient()) {
             // Getting the rss stream cannot be started in parallel as it needs to be read before loading the portfolios
-            var rss = await client.GetStreamAsync(rssUrl);
-            var rssData = ParseRssText(rss);
-
-            var portsNumber = rssData.Links.Count();
-            if (portsNumber == 0) throw new Exception("No portfolios for this cik");
-
+            var rssData = await FetchRssDataAsync(client, cik);
             var port1 = FetchPortfolio(client, rssData.Links.First());
 
             // If there is just one portfolio (i.e. investor just started investing) create an empty old one so that the logic
             // populates a displayPortfolio where all the positions are marked as new
-            var port2 = portsNumber == 1 ? Task.FromResult(new Portfolio() { Positions = new Position[] { } }) : FetchPortfolio(client, rssData.Links.ElementAt(1));
+            var port2 = rssData.Links.Count() == 1 ? Task.FromResult(new Portfolio() { Positions = new Position[] { } }) : FetchPortfolio(client, rssData.Links.ElementAt(1));
 
             var portfolios = await Task.WhenAll(new Task<Portfolio>[] { port1, port2 });
 
@@ -335,18 +345,11 @@ public static class GuruLoader {
         }
     }
 
-    public async static Task<FullPortfolioData> FetchFullPortfolioData(string cik) {
-        if (String.IsNullOrEmpty(cik)) throw new Exception("Cik cannot be empty");
-
-        var rssUrl = ComposeGuruUrl(cik);
+    public async static Task<FullPortfolioData> FetchFullPortfolioDataAsync(string cik) {
         using (var client = new HttpClient()) {
             // Getting the rss stream cannot be started in parallel as it needs to be read before loading the portfolios
-            var rss = await client.GetStreamAsync(rssUrl);
-            var rssData = ParseRssText(rss);
 
-            var portsNumber = rssData.Links.Count();
-            if (portsNumber == 0) throw new Exception("No portfolios for this cik");
-
+            var rssData = await FetchRssDataAsync(client, cik);
             var ports = rssData.Links.Select(l => FetchPortfolio(client, l));
             var portfolios = await Task.WhenAll(ports);
 
