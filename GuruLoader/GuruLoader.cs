@@ -144,6 +144,7 @@ public static class GuruLoader {
     public static string MakeSecLinkAbsolute(string relUrl) => $"https://www.sec.gov{relUrl}";
 
     // The submission file is divided in two parts, the first contains investor related data, the second the portfolio for that date
+    // TODO: ubrittle this a bit more
     static Tuple<XDocument, XDocument> SplitSubmissionFile(Stream submissionFile) {
         using (var reader = new StreamReader(submissionFile, Encoding.UTF8)) {
             var fullTxt = reader.ReadToEnd();
@@ -152,9 +153,10 @@ public static class GuruLoader {
             var firstDoc = fullTxt.Substring(startFirstDoc, endFirstDoc - startFirstDoc);
             var firstXml = XDocument.Parse(firstDoc);
 
-            var startSecondDoc = fullTxt.IndexOf("<informationTable");
-            var endSecondDoc = fullTxt.IndexOf("</informationTable>") + "</informationTable>".Length;
-            var secondDoc = fullTxt.Substring(startSecondDoc, endSecondDoc - startSecondDoc);
+            var startSecondDoc = fullTxt.IndexOf("<XML>", endFirstDoc) + "<XML>".Length + 1;
+            var endSecondDoc = fullTxt.IndexOf("</XML>", startSecondDoc);
+
+            var secondDoc = fullTxt.Substring(startSecondDoc, endSecondDoc - startSecondDoc).Trim();
             var secondXml = XDocument.Parse(secondDoc);
             return Tuple.Create(firstXml, secondXml);
         }
