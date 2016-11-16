@@ -89,6 +89,7 @@ public class HyperPosition {
     public int NumberGurusOwning { get; set; }
     public int NumberGurusBuying { get; set; }
     public int NumberGurusSelling { get; set; }
+    public IList<string> Gurus { get; set; }
 }
 
 public class HyperPortfolio {
@@ -115,7 +116,7 @@ public class DisplayCompany {
     public string ClassTitle { get; set; }
     public string Cusip { get; set; }
     public string PutCall { get; set; }
-    public List<DisplayChangePosition> ChangePositions { get; set; }
+    public IList<DisplayChangePosition> ChangePositions { get; set; }
 
 }
 
@@ -309,6 +310,7 @@ public static class GuruLoader {
                 totalWeight += relativeWeight;
                 var key = FormHyperKey(pos);
                 if (positions.TryGetValue(key, out hp)) { // Already owned
+                    hp.Gurus.Add(port.DisplayName);
                     hp.NumberGurusOwning += 1;
                     hp.PercOfPortfolio += relativeWeight;
                     if (pos.Change > 0) hp.NumberGurusBuying += 1;
@@ -322,8 +324,10 @@ public static class GuruLoader {
                         NumberGurusBuying = pos.Change > 0 ? 1 : 0,
                         NumberGurusSelling = pos.Change < 0 ? 1 : 0,
                         NumberGurusOwning = 1,
-                        PercOfPortfolio = relativeWeight
+                        PercOfPortfolio = relativeWeight,
+                        Gurus = new List<string>()
                     };
+                    hp.Gurus.Add(port.DisplayName);
                     positions[key] = hp;
                 }
             }

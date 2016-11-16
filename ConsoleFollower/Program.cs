@@ -26,10 +26,11 @@ public class Program {
     static string DisplayHyperPortToString(HyperPortfolio hp) {
         var sb = new StringBuilder();
         sb.AppendLine(String.Join(" -- ", hp.EndQuarterDate.ToString("d"), hp.NumberOfGurus));
-        sb.AppendLine(String.Join(" ", cs("NAME", 40), cs("P/C", 5), "%PORT ", "OWN ", "BUY ", "SELL "));
+        sb.AppendLine(String.Join(" ", cs("NAME", 40), cs("P/C", 5), "%PORT ", "OWN ", "BUY ", "SELL ", "GURUS"));
         foreach (var p in hp.Positions) {
             sb.AppendLine(String.Join(" ", cs(p.Name.Trim(), 40), cs(p.PutCall, 5), cs(Math.Round(p.PercOfPortfolio * 100, 2).ToString(), 6),
-                cs(p.NumberGurusOwning.ToString(), 4), cs(p.NumberGurusBuying.ToString(), 4), cs(p.NumberGurusSelling.ToString(),4)));
+                cs(p.NumberGurusOwning.ToString(), 4), cs(p.NumberGurusBuying.ToString(), 4), cs(p.NumberGurusSelling.ToString(),4),
+                cs(String.Join(",", p.Gurus),30)));
         }
         return sb.ToString();
     }
