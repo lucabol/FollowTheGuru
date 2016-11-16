@@ -23,6 +23,17 @@ public class Program {
         return sb.ToString();
     }
 
+    static string DisplayHyperPortToString(HyperPortfolio hp) {
+        var sb = new StringBuilder();
+        sb.AppendLine(String.Join(" -- ", hp.EndQuarterDate.ToString("d"), hp.NumberOfGurus));
+        sb.AppendLine(String.Join(" ", cs("NAME", 40), cs("P/C", 5), "%PORT ", "OWN ", "BUY ", "SELL "));
+        foreach (var p in hp.Positions) {
+            sb.AppendLine(String.Join(" ", cs(p.Name.Trim(), 40), cs(p.PutCall, 5), cs(Math.Round(p.PercOfPortfolio * 100, 2).ToString(), 6),
+                cs(p.NumberGurusOwning.ToString(), 4), cs(p.NumberGurusBuying.ToString(), 4), cs(p.NumberGurusSelling.ToString(),4)));
+        }
+        return sb.ToString();
+    }
+
     static string DisplayHistory(IEnumerable<DisplayCompany> companies) {
         var sb = new StringBuilder();
         foreach (var c in companies) {
@@ -36,22 +47,32 @@ public class Program {
         return sb.ToString();
     }
 
+    static IEnumerable<Tuple<string, double>> LoadCIKWeightFile(string path) {
+        return System.IO.File.ReadAllLines(path)
+            .Select(line => line.Split(new char[] { ',' }))
+            .Select(arr => Tuple.Create(arr[0].Trim(), double.Parse(arr[1])));
+    }
+
     // Try with the following ciks: 0001553733, 0001568820, 0001484148, 0001112520
     // or go to https://www.sec.gov/edgar/searchedgar/companysearch.html and put the name of the investor you are interested in
     public static void Main(string[] args)
     {
-        var banner = "Usage: Follower Cik [-All]";
+        var banner = "Usage: Follower [Cik,file] [-Hist, -Hyper]";
         if (args.Count() > 2) throw new Exception(banner);
-        if (args.Count() == 2 && args[1] != "-All") throw new ArgumentException(banner);
+        if (args.Count() == 2 && (args[1] != "-Hist" && args[1] != "-Hyper")) throw new ArgumentException(banner);
 
         if(args.Count() == 1) {
             var result = GuruLoader.FetchDisplayPortfolioAsync(args[0]).Result;
             Console.WriteLine(DisplayPortToString(result));
-        } else {
+        } else if(args[1] == "-Hist") {
             // Printing Portfolio summary at both start and bottom
             var result = GuruLoader.FetchFullPortfolioDataAsync(args[0]).Result;
             Console.WriteLine(DisplayPortToString(result.Portfolio));
             Console.WriteLine(DisplayHistory(result.CompaniesHistory));
+        } else {
+            var cw = LoadCIKWeightFile(args[0]);
+            var result = GuruLoader.FetchHyperPortfolioAsync(cw).Result;
+            Console.WriteLine(DisplayHyperPortToString(result));
         }
 
     }

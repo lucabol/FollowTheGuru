@@ -80,6 +80,24 @@ public class DisplayPortfolio {
     public IEnumerable<DisplayPosition> Positions { get; set; }
 }
 
+public class HyperPosition {
+    public string Name { get; set; }
+    public string ClassTitle { get; set; }
+    public string Cusip { get; set; }
+    public string PutCall { get; set; }
+    public double PercOfPortfolio { get; set; }
+    public int NumberGurusOwning { get; set; }
+    public int NumberGurusBuying { get; set; }
+    public int NumberGurusSelling { get; set; }
+}
+
+public class HyperPortfolio {
+    public DateTime EndQuarterDate { get; set; }
+    public int NumberOfGurus { get; set; }
+    public IEnumerable<HyperPosition> Positions { get; set; }
+
+}
+
 public class DisplayChangePosition {
     public int Value { get; set; }
     public int Shares { get; set; }
@@ -223,6 +241,9 @@ public static class GuruLoader {
     // btw: shoulld Discretion really be part of the key? Are they separate positions in the rare case they have separate discretion?
     static string FormKey(Position p) => p.Cusip + p.ClassTitle + p.PutCall + p.Discretion;
     static string FormKeyD(DisplayPosition p) => p.Cusip + p.ClassTitle + p.PutCall + p.Discretion;
+    // Discretion doesn't make sense for hyper portfolios as we are aggregating over all positions in individual portfolios
+    static string FormHyperKey(DisplayPosition p) => p.Cusip + p.PutCall;
+
 
     // Diffs two portfolios and figure out what changed, this could perhaps be written more functionally
     public static DisplayPortfolio CreateDisplayPortfolio(string displayName, Portfolio newPort, Portfolio oldPort) {
@@ -269,6 +290,56 @@ public static class GuruLoader {
             PositionsNumber = newPort.PositionsNumber,
             Positions = sortedPos
         };
+    }
+
+    // Creates an hyperportfolio from a list of portfolios and weights.
+    // Weight represents how much to weight the portfolio in the hyper portfolio
+    public static HyperPortfolio CreateHyperPortfolio(IEnumerable<Tuple<DisplayPortfolio, double>> ports) {
+        var lastDate = ports.Max(p => p.Item1.EndQuarterDate);
+        var tupleLastDate = ports.Where(p => p.Item1.EndQuarterDate == lastDate);
+        var positions = new Dictionary<string, HyperPosition>();
+        var totalWeight = 0.0; // Aggregated weight used to normalize end result to 100%
+
+        foreach (var t in tupleLastDate) {
+            var port = t.Item1;
+            var weight = t.Item2;
+            foreach (var pos in port.Positions) {
+                HyperPosition hp;
+                var relativeWeight = pos.PercOfPortfolio * weight;
+                totalWeight += relativeWeight;
+                var key = FormHyperKey(pos);
+                if (positions.TryGetValue(key, out hp)) { // Already owned
+                    hp.NumberGurusOwning += 1;
+                    hp.PercOfPortfolio += relativeWeight;
+                    if (pos.Change > 0) hp.NumberGurusBuying += 1;
+                    if (pos.Change < 0) hp.NumberGurusSelling += 1;
+                } else { // not yet owned
+                    hp = new HyperPosition {
+                        Cusip = pos.Cusip,
+                        ClassTitle = pos.ClassTitle,
+                        Name = pos.Name,
+                        PutCall = pos.PutCall,
+                        NumberGurusBuying = pos.Change > 0 ? 1 : 0,
+                        NumberGurusSelling = pos.Change < 0 ? 1 : 0,
+                        NumberGurusOwning = 1,
+                        PercOfPortfolio = relativeWeight
+                    };
+                    positions[key] = hp;
+                }
+            }
+        }
+        var resPositions = positions.Values;
+        // Normalize weights, I am sure there is a way to do it without another pass over the positions, but small numbers here
+        foreach (var hp in resPositions) {
+            hp.PercOfPortfolio /= totalWeight;
+        }
+
+        // Check normalization is effective
+        Debug.Assert(resPositions.Sum(p => p.PercOfPortfolio) < 1.01 && resPositions.Sum(p => p.PercOfPortfolio) > 0.99);
+        // eye candy
+        var sortedRes = resPositions.OrderByDescending(hp => hp.PercOfPortfolio);
+
+        return new HyperPortfolio { EndQuarterDate = lastDate, NumberOfGurus = tupleLastDate.Count(), Positions = sortedRes };
     }
 
     // Takes a list of portfolios and returns the history of all the positions of the *most recent* portfolio
@@ -365,6 +436,12 @@ public static class GuruLoader {
         }
     }
 
+    public async static Task<HyperPortfolio> FetchHyperPortfolioAsync(IEnumerable<Tuple<string, double>> cikAndWeights) {
+        var displayPortsTasks = cikAndWeights.Select(cw => FetchDisplayPortfolioAsync(cw.Item1)).ToArray();
+        var displayPorts = await Task.WhenAll(displayPortsTasks);
+        var portsAndWeights = displayPorts.Zip(cikAndWeights, (dp, cw) => Tuple.Create(dp, cw.Item2));
+        return GuruLoader.CreateHyperPortfolio(portsAndWeights);
+    }
 }
 
 
