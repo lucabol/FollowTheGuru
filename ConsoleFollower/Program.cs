@@ -56,6 +56,7 @@ public class Program {
 
     // Try with the following ciks: 0001553733, 0001568820, 0001484148, 0001112520
     // or go to https://www.sec.gov/edgar/searchedgar/companysearch.html and put the name of the investor you are interested in
+    // TODO: clean up cmd line definition and code to manage it.
     public static void Main(string[] args)
     {
         var banner = "Usage: Follower [Cik,file] [-Hist, -Hyper]";

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using Xunit;
 using System.Linq;
+using System.Reflection;
 
 /*
  * Tests should be improved. They just test general properties of files, instead of lower granularity facts
@@ -12,9 +13,12 @@ using System.Linq;
 public class Tests {
 
     // Generators to create test data from the files on disk
-    public static IEnumerable<object[]> GetFileWithExtension(string ext)
-        => Directory.GetFiles(@"TestData\", ext)
-                    .Select(path => new object [] { path});
+    public static IEnumerable<object[]> GetFileWithExtension(string ext) {
+        var baseDir = AppContext.BaseDirectory;
+        var fileDir = Path.Combine(baseDir, @"TestData\");
+        return Directory.GetFiles(fileDir, ext)
+                        .Select(path => new object[] { path });
+    }
 
     public static IEnumerable<object[]>  GetRssFiles() => GetFileWithExtension("*.rss");
     public static IEnumerable<object[]> GetHtmFiles() => GetFileWithExtension("*.htm");
@@ -64,13 +68,17 @@ public class Tests {
     // This could be made more generic by reading from a cvs file with more info to check.
     // As it is it checks that one particular position (cusip) has changed has expected, one is new and another is sold
     [Theory,
-        InlineData(@"TestData\Arlington1.txt", @"TestData\Arlington2.txt", "N20146101", -0.1697, "949746101",null),
-        InlineData(@"TestData\BraveWarrior1.txt", @"TestData\BraveWarrior2.txt", "03674x106", 1.2081, "g5480u138", "91911k102")]
+        InlineData("Arlington1.txt", "Arlington2.txt", "N20146101", -0.1697, "949746101",null),
+        InlineData("BraveWarrior1.txt", "BraveWarrior2.txt", "03674x106", 1.2081, "g5480u138", "91911k102")]
     public void CreateDisplayPortfolioTests(string newPort, string oldPort, string cusipChanged, double change, string cusipNew, string cusipSold) {
-        var txtStream1 = File.OpenRead(newPort);
+
+        var baseDir = AppContext.BaseDirectory;
+        var filePath = Path.Combine(baseDir, @"TestData\");
+
+        var txtStream1 = File.OpenRead(Path.Combine(filePath,newPort));
         var port1 = GuruLoader.ParseSubmissionFile(txtStream1);
 
-        var txtStream2 = File.OpenRead(oldPort);
+        var txtStream2 = File.OpenRead(Path.Combine(filePath, oldPort));
         var port2 = GuruLoader.ParseSubmissionFile(txtStream2);
 
         var dp = GuruLoader.CreateDisplayPortfolio("name", port1, port2);
