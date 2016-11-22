@@ -73,6 +73,9 @@ public class DisplayPosition {
 // A displayable portfolio
 public class DisplayPortfolio {
 
+    public string id { get; set; }
+    public string[] groups { get; set; }
+
     public string DisplayName { get; set; }
     public int TotalValue { get; set; }
     public int PositionsNumber { get; set; }
@@ -373,7 +376,7 @@ public static class GuruLoader {
 
     // Utility function to help waiting for all portfolios to be loaded
     async static Task<Portfolio> FetchPortfolio(HttpClient client, string htmlLink) {
-        try {
+         try {
             using (var html = await client.GetStreamAsync(htmlLink)) {
                 var submissionLink = ParseHtmFile(html);
                 using (var submissionStream = await client.GetStreamAsync(MakeSecLinkAbsolute(submissionLink))) {
@@ -388,12 +391,12 @@ public static class GuruLoader {
             // Until I implement support for such old files, I construct an empty portfolio in such cases
             // TODO: fix the code so that doesn't swallow exceptions
             return new Portfolio {
-                EndQuarterDate = new DateTime(), Positions = new List<Position>(), PositionsNumber = 0, TotalValue = 0
+                EndQuarterDate = new DateTime(), Positions = new List<Position>(), PositionsNumber = 101, TotalValue = 101
             };
         }
     }
 
-    static async Task<RssData>  FetchRssDataAsync(HttpClient client, string cik) {
+        static async Task<RssData>  FetchRssDataAsync(HttpClient client, string cik) {
         if (String.IsNullOrEmpty(cik)) throw new Exception("Cik cannot be empty");
 
         var rssUrl = ComposeGuruUrl(cik);
