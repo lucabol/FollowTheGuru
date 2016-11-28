@@ -54,14 +54,18 @@ public class Program {
             .Select(arr => Tuple.Create(arr[0].Trim(), double.Parse(arr[1])));
     }
 
+    static void Banner() {
+        var banner = "ERRROR!\nUsage: Follower [Cik,file] [-Hist, -Hyper]";
+        Console.Write(banner);
+        Environment.Exit(-1);
+    }
     // Try with the following ciks: 0001553733, 0001568820, 0001484148, 0001112520
     // or go to https://www.sec.gov/edgar/searchedgar/companysearch.html and put the name of the investor you are interested in
     // TODO: clean up cmd line definition and code to manage it.
     public static void Main(string[] args)
     {
-        var banner = "Usage: Follower [Cik,file] [-Hist, -Hyper]";
-        if (args.Count() > 2) throw new Exception(banner);
-        if (args.Count() == 2 && (args[1] != "-Hist" && args[1] != "-Hyper")) throw new ArgumentException(banner);
+        if (args.Count() > 2 || args.Count() == 0) Banner();
+        if (args.Count() == 2 && (args[1] != "-Hist" && args[1] != "-Hyper")) Banner();
 
         if(args.Count() == 1) {
             var result = GuruLoader.FetchDisplayPortfolioAsync(args[0]).Result;
