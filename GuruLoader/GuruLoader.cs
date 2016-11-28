@@ -248,11 +248,26 @@ public static class GuruLoader {
     // Discretion doesn't make sense for hyper portfolios as we are aggregating over all positions in individual portfolios
     static string FormHyperKey(DisplayPosition p) => p.Cusip + p.PutCall;
 
+    static Dictionary<string, Position> CreatePositionsDictionary(IEnumerable<Position> poss) {
+        var d = new Dictionary<string, Position>();
+        foreach (var p in poss) {
+            Position i;
+            var key = FormKey(p);
+            if(d.TryGetValue(key, out i)) {
+                i.Shares += p.Shares;
+                i.Value += p.Value;
+            } else {
+                d[key] = p;
+            }
+        }
+        return d;
+    }
 
     // Diffs two portfolios and figure out what changed, this could perhaps be written more functionally
     public static DisplayPortfolio CreateDisplayPortfolio(string displayName, Portfolio newPort, Portfolio oldPort) {
+
         var positions = new List<DisplayPosition>();
-        var oldPositions = oldPort.Positions.ToDictionary(FormKey);
+        Dictionary<string, Position> oldPositions = CreatePositionsDictionary(oldPort.Positions);
 
         // Process existing positions
         foreach (var pn in newPort.Positions) {
