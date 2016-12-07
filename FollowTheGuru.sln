@@ -9,8 +9,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GuruLoader", "GuruLoader\Gu
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GuruLoaderTests", "GuruLoaderTests\GuruLoaderTests.csproj", "{C5CC527C-53D1-48AD-85B3-868D14C58008}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GuruLoader46", "GuruLoader46\GuruLoader46.csproj", "{8FD2FC76-C56C-4D01-BB55-63E45889A6B5}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -29,10 +27,6 @@ Global
 		{C5CC527C-53D1-48AD-85B3-868D14C58008}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C5CC527C-53D1-48AD-85B3-868D14C58008}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C5CC527C-53D1-48AD-85B3-868D14C58008}.Release|Any CPU.Build.0 = Release|Any CPU
-		{8FD2FC76-C56C-4D01-BB55-63E45889A6B5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{8FD2FC76-C56C-4D01-BB55-63E45889A6B5}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{8FD2FC76-C56C-4D01-BB55-63E45889A6B5}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{8FD2FC76-C56C-4D01-BB55-63E45889A6B5}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

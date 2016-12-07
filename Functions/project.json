@@ -1,9 +1,0 @@
-{
-  "dependencies": {
-    "HtmlAgilityPack.NetCore": "1.5.0.1",
-    "NetStandardLibrary": "1.6.1"
-  },
-  "frameworks": {
-    "net46":{}
-   }
-}
