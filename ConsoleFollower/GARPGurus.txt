@@ -14,3 +14,5 @@
 0000860585, 1.0, RBS Partners
 0001484148, 0.3, Turtle Creek
 0001549575, 0.6, Dalal Street
+0001631664, 0.6, Punch Card Capital
+0001542280, 0.6, Cook & Bynum
